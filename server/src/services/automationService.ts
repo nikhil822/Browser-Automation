@@ -14,6 +14,7 @@ interface Action {
   waitTime?: number;
   keypress?: string;
   position?: number; // For navigating to nth search result
+  field?: string; // For generic fill actions (e.g., username, password)
 }
 
 // Create a WeakMap to store filled fields for each page (fixes TypeScript errors)
@@ -77,6 +78,120 @@ export async function executeAutomation(actions: Action[]): Promise<string> {
     for (const action of actions) {
       console.log(`Processing action: ${action.type}`);
       
+      // CLICK SEARCH RESULT/NAVIGATE RESULT
+      if ((action.type === "navigateResult" || action.type === "clickSearchResult") && action.position) {
+        const position = action.position || 1;
+        console.log(`Navigating to search result #${position}`);
+        try {
+          // Wait for results to load
+          await page.waitForTimeout(2000);
+
+          // Define robust selectors for Google (and fallback for others)
+          const url = page.url().toLowerCase();
+          let resultSelectors: string[] = [];
+          if (url.includes('google.com')) {
+            resultSelectors = [
+              '.g .yuRUbf > a', // Modern Google organic results
+              'a.tKCJxd', // Google result links by class
+              'div[data-sokoban-container] > div > a',
+              '.g a[ping]',
+              'h3.LC20lb', // Google headings (fallback)
+              '#search .g a:not([href*="google"]):not([href^="/search"]):not([href^="#"])',
+              'a[href^="http"]:not([href*="google"]):not([href^="/search"]):not([href^="#"])',
+            ];
+          } else {
+            // Generic selectors
+            resultSelectors = [
+              'a[href^="http"]',
+              '.result a',
+              '.search-result a',
+              '.searchResult a',
+              'article a',
+              'h2 a, h3 a',
+              'a'
+            ];
+          }
+
+          // Try each selector and collect visible results
+          let visibleResults: any[] = [];
+          for (const selector of resultSelectors) {
+            try {
+              console.log(`Trying selector: ${selector}`);
+              const results = await page.$$(selector);
+              for (const result of results) {
+                if (await result.isVisible()) {
+                  // Filter out Google ad/redirect/internal links
+                  const href = await result.getAttribute('href');
+                  if (href && href.startsWith('http') && !href.includes('google.com') && !href.startsWith('/search')) {
+                    visibleResults.push(result);
+                  }
+                  if (visibleResults.length >= position) break;
+                }
+              }
+              if (visibleResults.length >= position) break;
+            } catch (e: any) {
+              console.log(`Selector ${selector} failed: ${e.message}`);
+            }
+          }
+
+          if (visibleResults.length >= position) {
+            const targetResult = visibleResults[position - 1];
+            const linkText = await targetResult.innerText().catch(() => 'Unknown');
+            const targetUrl = await targetResult.getAttribute('href');
+            console.log(`Clicking search result #${position}: ${linkText} (${targetUrl})`);
+            await targetResult.click();
+            await page.waitForLoadState('domcontentloaded', { timeout: 10000 });
+            const newUrl = page.url();
+            console.log(`Navigated to: ${newUrl}`);
+            await page.screenshot({ path: `/tmp/after-click-result-${Date.now()}.png` });
+          } else {
+            await page.screenshot({ path: `/tmp/search-result-not-found-${Date.now()}.png` });
+            throw new Error(`Could not find search result #${position}. Only found ${visibleResults.length} results.`);
+          }
+        } catch (err: any) {
+          console.error(`Error navigating to search result #${position}: ${err.message}`);
+          throw err;
+        }
+      }
+
+      // CLICK - click a button, link, or tab by descriptor
+      if (action.type === "click" && action.elementDescriptor) {
+        try {
+          console.log(`Clicking element: ${action.elementDescriptor}`);
+          const element = await findElement(page, action.elementDescriptor);
+          if (element) {
+            await element.click();
+            await page.waitForTimeout(1200); // Allow dialog/page to update
+            await page.screenshot({ path: `/tmp/after-click-${action.elementDescriptor}-${Date.now()}.png` });
+            console.log(`Clicked element: ${action.elementDescriptor}`);
+          } else {
+            throw new Error(`Could not find element to click: ${action.elementDescriptor}`);
+          }
+        } catch (err: any) {
+          console.error(`Error clicking element '${action.elementDescriptor}': ${err.message}`);
+          throw err;
+        }
+      }
+
+      // FILL - fill an input field (username, password, etc.)
+      if (action.type === "fill" && action.field && action.value !== undefined) {
+        try {
+          console.log(`Filling input: ${action.field} with value: ${action.value}`);
+          const input = await findInputField(page, action.field);
+          if (input) {
+            await input.fill(action.value);
+            await page.waitForTimeout(400);
+            await page.screenshot({ path: `/tmp/after-fill-${action.field}-${Date.now()}.png` });
+            console.log(`Filled input: ${action.field}`);
+          } else {
+            throw new Error(`Could not find input field: ${action.field}`);
+          }
+        } catch (err: any) {
+          console.error(`Error filling input '${action.field}': ${err.message}`);
+          throw err;
+        }
+      }
+
       // GOTO - navigate to a URL
       if (action.type === "goto" && action.url) {
         console.log(`Navigating to: ${action.url}`);
@@ -113,10 +228,67 @@ export async function executeAutomation(actions: Action[]): Promise<string> {
           
           // Handle different search engines
           if (currentUrl.includes('google.com')) {
-            // Google search
-            await page.fill('input[name="q"]', action.query);
-            await page.press('input[name="q"]', 'Enter');
-            console.log('Performed Google search');
+            // --- Robust Google search input handling ---
+            // 1. Handle consent dialogs if present
+            const consentSelectors = [
+              'button:has-text("Accept all")',
+              'button:has-text("I agree")',
+              'button:has-text("Accept")',
+              'button:has-text("Agree")',
+              'button:has-text("Consent")',
+              'button:has-text("Yes")',
+              'button:has-text("Continue")',
+              'div[role="dialog"] button',
+              '[aria-label*="consent"] button',
+              '#L2AGLb',
+              '.tHlp8d'
+            ];
+            for (const selector of consentSelectors) {
+              try {
+                const btn = await page.$(selector);
+                if (btn && await btn.isVisible()) {
+                  console.log(`Found consent button: ${selector}`);
+                  await btn.click();
+                  await page.waitForTimeout(1200);
+                  await page.screenshot({ path: `/tmp/google-consent-clicked-${Date.now()}.png` });
+                  break;
+                }
+              } catch (e) { /* ignore */ }
+            }
+            // 2. Try multiple selectors for the search input
+            const googleSearchSelectors = [
+              'input[name="q"]',
+              'textarea[name="q"]',
+              'input[title="Search"]',
+              'textarea[title="Search"]',
+              'input.gLFyf',
+              'textarea.gLFyf',
+              '[aria-label="Search"]'
+            ];
+            let found = false;
+            for (const selector of googleSearchSelectors) {
+              try {
+                console.log(`Trying Google search selector: ${selector}`);
+                const input = await page.waitForSelector(selector, { timeout: 7000, state: 'visible' });
+                if (input && action.query) {
+                  await input.click();
+                  await input.fill(action.query);
+                  await page.waitForTimeout(300);
+                  await input.press('Enter');
+                  console.log(`Performed Google search with selector: ${selector}`);
+                  found = true;
+                  break;
+                }
+              } catch (e) {
+                console.log(`Selector failed: ${selector}`);
+              }
+            }
+            if (!found) {
+              await page.screenshot({ path: `/tmp/google-search-not-found-${Date.now()}.png` });
+              const pageHtml = await page.content();
+              console.error('Could not find Google search input. HTML snapshot saved.');
+              throw new Error('Could not find Google search input.');
+            }
           } 
           else if (currentUrl.includes('bing.com')) {
             // Bing search

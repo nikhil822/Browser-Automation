@@ -3,6 +3,8 @@ import express, { Application } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { interact } from './routes/interact';
+import { extract } from './routes/extract';
+import extractNlp from './routes/extractNlp';
 dotenv.config();
 
 const app: Application = express();
@@ -49,6 +51,10 @@ app.post('/direct-interact', async (req, res) => {
   res.json({ success: true, message: 'Direct interact endpoint is working' });
 });
 
+// Mount extractNlp router
+app.use('/extract-nlp', extractNlp);
+// Mount extract router
+app.use('/extract', extract);
 // Mount interact router
 app.use('/interact', interact);
 

@@ -1,13 +1,13 @@
 // src/services/nlpService.ts
-import { pipeline, TextClassificationPipeline } from '@xenova/transformers';
-
-let classifier: TextClassificationPipeline | undefined;
+let classifier: any;
 
 // Classify the input text using a pre-trained sentiment analysis model
 export async function classifyCommand(text: string): Promise<any> {
   if (!classifier) {
     console.log("Loading classifier...");
-    classifier = await pipeline('text-classification', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english');
+    // Dynamically import @xenova/transformers
+    const transformers = await import('@xenova/transformers');
+    classifier = await transformers.pipeline('text-classification', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english');
     console.log("Classifier loaded.");
   }
   const result = await classifier(text);

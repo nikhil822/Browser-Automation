@@ -26,10 +26,15 @@ export function parseCommandHybrid(command: string): Array<any> {
     part = part.trim();
     let actionAdded = false;
 
-    // NAVIGATION - Look for a "go to" command
-    const urlMatch = part.match(/(?:go to|navigate to|open|visit) (https?:\/\/[^\s]+)/i);
+    // NAVIGATION - Look for a "go to" command (with or without http/https)
+    const urlMatch = part.match(/(?:go to|navigate to|open|visit) ((https?:\/\/)?[^\s]+)/i);
     if (urlMatch) {
-      actions.push({ type: "goto", url: urlMatch[1] });
+      let url = urlMatch[1];
+      // Prepend https:// if missing
+      if (!/^https?:\/\//i.test(url)) {
+        url = 'https://' + url;
+      }
+      actions.push({ type: "goto", url });
       actionAdded = true;
       continue;
     }

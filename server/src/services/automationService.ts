@@ -50,8 +50,8 @@ async function getElementIdentifier(element: any): Promise<string> {
 }
 
 export async function executeAutomation(actions: Action[]): Promise<string> {
-  // Default return message
-  let resultMessage = 'Successfully executed automation';
+  // Build a more informative result message
+  let resultMessage = '';
   console.log('Starting automation with actions:', actions);
   
   // Launch with more options to reduce chance of being flagged as a bot
@@ -76,6 +76,12 @@ export async function executeAutomation(actions: Action[]): Promise<string> {
   try {
     // Process each action in sequence
     for (const action of actions) {
+      // Add a delay after filling fields to allow UI updates (e.g., enabling login button)
+      if (action.type === 'fill' || action.type === 'fillUsername' || action.type === 'fillPassword') {
+        // Existing fill logic will be here (unchanged)
+        // Add a short wait after filling
+        await page.waitForTimeout(500);
+      }
       console.log(`Processing action: ${action.type}`);
       
       // CLICK SEARCH RESULT/NAVIGATE RESULT
@@ -549,12 +555,40 @@ export async function executeAutomation(actions: Action[]): Promise<string> {
     }).catch(e => console.log('Failed to add message to page:', e));
     
     console.log('Keeping browser open for user interaction - you will need to close it manually');
-    
-    // The key approach: return a promise that never resolves to keep the browser open
-    // The browser will only close if explicitly closed by the user
-    await new Promise(() => {});
-    
-    // This code is never reached, but TypeScript needs a return statement
+
+    // Build a summary of executed actions for the user
+    if (actions.length === 1) {
+      const action = actions[0];
+      if (action.type === 'goto') {
+        resultMessage = `Navigated to ${action.url}.`;
+      } else if (action.type === 'click') {
+        resultMessage = `Clicked element: ${action.elementDescriptor || 'unknown'}.`;
+      } else if (action.type === 'search') {
+        resultMessage = `Searched for: ${action.query}.`;
+      } else {
+        resultMessage = `Executed action: ${action.type}.`;
+      }
+    } else if (actions.length > 1) {
+      const summaries: string[] = [];
+      for (const action of actions) {
+        if (action.type === 'goto') {
+          summaries.push(`navigated to ${action.url}`);
+        } else if (action.type === 'click') {
+          summaries.push(`clicked element '${action.elementDescriptor || 'unknown'}'`);
+        } else if (action.type === 'search') {
+          summaries.push(`searched for '${action.query}'`);
+        } else {
+          summaries.push(`executed '${action.type}'`);
+        }
+      }
+      // Capitalize first letter and join
+      resultMessage = summaries.map((s, i) => (i === 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s)).join(', ') + '.';
+    } else {
+      resultMessage = 'No actions executed.';
+    }
+
+    // Instead of blocking the API response, return immediately so the client gets a reply
+    // The browser will remain open for manual interaction
     return resultMessage;
   } catch (error: any) {
     console.error('Error during automation:', error);
@@ -584,10 +618,7 @@ export async function executeAutomation(actions: Action[]): Promise<string> {
       console.error('Failed to show error message in browser:', e);
     }
     
-    // Never resolve this promise to keep the browser open even after errors
-    await new Promise(() => {});
-    
-    // This line is never reached
+    // Instead of blocking, return the error message so the client gets a reply
     return resultMessage;
   }
 }
@@ -949,6 +980,13 @@ async function findElement(page: Page, descriptor: string): Promise<any> {
     console.error('Error in fuzzy text match phase:', e);
   }
   
+  // Try input[type="submit"] with value containing "login"
+  const submitLogin = await page.$('input[type="submit"][value*="login" i]');
+  if (submitLogin && await submitLogin.isVisible()) {
+    console.log('Found login button via input[type="submit"][value*="login" i]');
+    return submitLogin;
+  }
+
   // Phase 4: Try common clickable elements
   const commonClickableSelectors = [
     'button',
@@ -968,7 +1006,7 @@ async function findElement(page: Page, descriptor: string): Promise<any> {
           // Check if the element's text contains the descriptor
           const text = await element.textContent();
           if (text && text.toLowerCase().includes(descriptor.toLowerCase())) {
-            console.log(`Found element via common clickable with matching text: ${selector}`);
+            console.log(`Found element via common clickable with matching text: ${selector} and text: ${text}`);
             return element;
           }
         }

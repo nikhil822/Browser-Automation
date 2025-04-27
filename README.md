@@ -80,4 +80,22 @@ The frontend will start on [http://localhost:5173](http://localhost:5173)
 - `Go to https://www.codechef.com/login and click login`
 - `Fill username as johndoe and password as secret`
 
+---
+
+## Tech Stack & Tools
+
+### Frontend
+- **React**
+- **TypeScript**
+- **Tailwind CSS**
+- **Lucide Icons** 
+
+### Backend
+- **Node.js** 
+- **Express** 
+- **TypeScript**
+- **Playwright** (browser automation)
+- **Hugging Face Transformers** (NLP model for command classification/parsing, e.g. DistilBERT via @xenova/transformers)
+
+
 

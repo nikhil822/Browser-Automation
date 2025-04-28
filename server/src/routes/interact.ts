@@ -1,8 +1,8 @@
 // src/routes/interact.ts
 import { Router, Request, Response } from 'express';
-import { classifyCommand, parseCommandHybrid } from '../services/nlpService';
+import { classifyCommand, parseCommandHybrid } from '../services/nlpService.js';
 // Uncomment the next line if you want to execute automation actions
-import { executeAutomation } from '../services/automationService';
+import { executeAutomation } from '../services/automationService.js';
 
 const router = Router();
 

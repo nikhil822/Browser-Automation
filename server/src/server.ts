@@ -2,7 +2,7 @@
 import express, { Application } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { interact } from './routes/interact';
+import { interact } from './routes/interact.js';
 dotenv.config();
 
 const app: Application = express();

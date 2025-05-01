@@ -3,7 +3,7 @@ import { ApiResponse } from '../types';
 // Real API service for interacting with backend automation
 export const sendPrompt = async (prompt: string): Promise<ApiResponse> => {
   try {
-    const response = await fetch('https://browser-automation-backend.vercel.app/interact', {
+    const response = await fetch('http://localhost:3001/interact', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

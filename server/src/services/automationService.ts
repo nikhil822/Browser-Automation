@@ -164,15 +164,195 @@ export async function executeAutomation(actions: Action[]): Promise<string> {
       if (action.type === "click" && action.elementDescriptor) {
         try {
           console.log(`Clicking element: ${action.elementDescriptor}`);
-          const element = await findElement(page, action.elementDescriptor);
-          if (element) {
-            await element.click();
-            await page.waitForTimeout(1200); // Allow dialog/page to update
-            await page.screenshot({ path: `/tmp/after-click-${action.elementDescriptor}-${Date.now()}.png` });
-            console.log(`Clicked element: ${action.elementDescriptor}`);
+          
+          // Special handling for CodeChef login page
+          if (action.elementDescriptor.toLowerCase().includes('login') && page.url().includes('codechef.com')) {
+            console.log('Detected CodeChef login page, using specialized login approach');
+            
+            // Wait a bit longer for form interactions to stabilize
+            await page.waitForTimeout(2000);
+            
+            console.log('Using simplified approach for CodeChef LOGIN button');
+            await page.waitForTimeout(2000); // Allow page to stabilize
+            
+            // Take a screenshot for debugging
+            await page.screenshot({ path: `/tmp/codechef-login-attempt-${Date.now()}.png` });
+            
+            let clicked = false;
+            
+            // APPROACH 1: Direct selector for the BLUE login button at bottom of form
+            try {
+              // Very specific CSS selectors targeting the blue button at form bottom
+              const buttonSelectors = [
+                'form .btn-blue', // Form with blue button
+                'form .btn-primary', // Form with primary button
+                'form button[type="submit"]', // Form submit button
+                '.login-form button[type="submit"]', // Login form submit button
+                '.login-form .btn', // Login form button
+              ];
+              
+              for (const selector of buttonSelectors) {
+                const buttons = await page.$$(selector);
+                console.log(`Found ${buttons.length} buttons matching ${selector}`);
+                
+                if (buttons.length > 0) {
+                  // Try clicking each button, starting from the first one
+                  for (const button of buttons) {
+                    if (await button.isVisible()) {
+                      // Scroll button into view and wait
+                      await button.scrollIntoViewIfNeeded();
+                      await page.waitForTimeout(1000);
+                      
+                      // Click with force option
+                      await button.click({ force: true });
+                      clicked = true;
+                      console.log(`Successfully clicked button with selector: ${selector}`);
+                      await page.waitForTimeout(2000);
+                      break;
+                    }
+                  }
+                  
+                  if (clicked) break;
+                }
+              }
+            } catch (err) {
+              console.log(`Error with direct selector approach: ${err.message}`);
+            }
+            
+            // APPROACH 2: Try direct DOM interaction through JavaScript
+            if (!clicked) {
+              try {
+                console.log('Trying direct DOM interaction for CodeChef login button');
+                
+                // Use JavaScript to click the submit button inside the form
+                const jsClicked = await page.evaluate(() => {
+                  // First identify all forms on the page
+                  const forms = Array.from(document.querySelectorAll('form'));
+                  console.log(`Found ${forms.length} forms on the page`);
+                  
+                  // Look through each form for a login/submit button
+                  for (const form of forms) {
+                    // Check if this form has a username and password field
+                    const hasUserField = form.querySelector('input[type="text"], input[type="email"]') !== null;
+                    const hasPasswordField = form.querySelector('input[type="password"]') !== null;
+                    
+                    if (hasUserField && hasPasswordField) {
+                      console.log('Found form with username and password fields');
+                      
+                      // Look for any buttons in this form
+                      const buttons = form.querySelectorAll('button, input[type="submit"], .btn');
+                      console.log(`Found ${buttons.length} buttons in this form`);
+                      
+                      // Click the first visible button
+                      for (const button of buttons) {
+                        try {
+                          // Force the button to be visible and active
+                          const htmlButton = button as HTMLElement;
+                          htmlButton.style.pointerEvents = 'auto';
+                          htmlButton.style.opacity = '1';
+                          htmlButton.style.visibility = 'visible';
+                          
+                          // Handle disabled property for different element types
+                          if (button instanceof HTMLButtonElement || button instanceof HTMLInputElement) {
+                            button.disabled = false;
+                          }
+                          
+                          // Scroll to it and click
+                          htmlButton.scrollIntoView({behavior: 'smooth', block: 'center'});
+                          console.log('Clicking button:', htmlButton.textContent || htmlButton.tagName);
+                          htmlButton.click();
+                          return true;
+                        } catch (err) {
+                          console.log('Error clicking button:', err);
+                        }
+                      }
+                    }
+                  }
+                  return false;
+                });
+                
+                if (jsClicked) {
+                  clicked = true;
+                  console.log('Successfully clicked login button using JavaScript');
+                  await page.waitForTimeout(2000);
+                }
+              } catch (err) {
+                console.log(`Error with JavaScript interaction: ${err.message}`);
+              }
+            }
+            
+            // APPROACH 3: Last resort - direct keyboard navigation
+            if (!clicked) {
+              try {
+                console.log('Using keyboard navigation to submit the form');
+                
+                // Reset focus to top of page then tab to form elements
+                await page.evaluate(() => { window.scrollTo(0, 0); });
+                await page.waitForTimeout(500);
+                
+                // Focus on username field
+                const usernameField = await page.$('input[type="text"], input[type="email"]');
+                if (usernameField) {
+                  await usernameField.focus();
+                  await page.waitForTimeout(500);
+                  
+                  // Press Tab to navigate to password field
+                  await page.keyboard.press('Tab');
+                  await page.waitForTimeout(500);
+                  
+                  // Press Tab again to navigate to login button
+                  await page.keyboard.press('Tab'); 
+                  await page.waitForTimeout(500);
+                  
+                  // Press Enter to submit the form
+                  await page.keyboard.press('Enter');
+                  clicked = true;
+                  console.log('Submitted form using keyboard navigation');
+                  await page.waitForTimeout(2000);
+                }
+                
+                // If still not clicked, try one more direct method
+                if (!clicked) {
+                  console.log('Attempting direct submit of the form');
+                  
+                  // Try to submit the form directly
+                  const formSubmitted = await page.evaluate(() => {
+                    // Find forms with login inputs
+                    const forms = Array.from(document.querySelectorAll('form'));
+                    const loginForm = forms.find(form => 
+                      form.querySelector('input[type="password"]') !== null);
+                    
+                    if (loginForm) {
+                      console.log('Found login form, submitting directly');
+                      loginForm.submit();
+                      return true;
+                    }
+                    return false;
+                  });
+                  
+                  if (formSubmitted) {
+                    clicked = true;
+                    console.log('Directly submitted the login form');
+                    await page.waitForTimeout(2000);
+                  }
+                }
+              } catch (err) {
+                console.log(`Error with keyboard navigation: ${err.message}`);
+              }
+            }
           } else {
-            throw new Error(`Could not find element to click: ${action.elementDescriptor}`);
+            // Standard element click for non-CodeChef pages
+            const element = await findElement(page, action.elementDescriptor);
+            if (element) {
+              await element.click();
+              await page.waitForTimeout(1200); // Allow dialog/page to update
+              console.log(`Clicked element: ${action.elementDescriptor}`);
+            } else {
+              throw new Error(`Could not find element to click: ${action.elementDescriptor}`);
+            }
           }
+          
+          await page.screenshot({ path: `/tmp/after-click-${action.elementDescriptor}-${Date.now()}.png` });
         } catch (err: any) {
           console.error(`Error clicking element '${action.elementDescriptor}': ${err.message}`);
           throw err;
@@ -185,10 +365,28 @@ export async function executeAutomation(actions: Action[]): Promise<string> {
           console.log(`Filling input: ${action.field} with value: ${action.value}`);
           const input = await findInputField(page, action.field);
           if (input) {
-            await input.fill(action.value);
-            await page.waitForTimeout(400);
+            // Clear the field first
+            await input.click({clickCount: 3}); // Triple-click to select all text
+            await input.press('Backspace'); // Delete selected text
+            
+            // Type with human-like delay
+            await input.type(action.value, {delay: 100});
+            
+            // Wait longer after filling form fields on login pages
+            if (page.url().includes('login') || page.url().includes('signin')) {
+              await page.waitForTimeout(1000); // Wait longer for login forms
+            } else {
+              await page.waitForTimeout(400);
+            }
+            
             await page.screenshot({ path: `/tmp/after-fill-${action.field}-${Date.now()}.png` });
             console.log(`Filled input: ${action.field}`);
+            
+            // Special handling for CodeChef login form - press Tab to move to next field
+            if (page.url().includes('codechef.com')) {
+              await input.press('Tab');
+              await page.waitForTimeout(500);
+            }
           } else {
             throw new Error(`Could not find input field: ${action.field}`);
           }
@@ -367,23 +565,39 @@ export async function executeAutomation(actions: Action[]): Promise<string> {
           const element = await findElement(page, action.elementDescriptor);
           
           if (element) {
-            // Make sure it's visible in viewport
+            // Ensure element is visible and enabled (for buttons)
+            const isVisible = await element.isVisible();
+            const isDisabled = await element.getAttribute('disabled');
+            if (!isVisible) {
+              console.error(`Element '${action.elementDescriptor}' is not visible.`);
+              throw new Error(`Element '${action.elementDescriptor}' is not visible.`);
+            }
+            if (isDisabled !== null) {
+              console.warn(`Element '${action.elementDescriptor}' is disabled, but will attempt to click.`);
+            }
+            // Scroll into view
             await element.scrollIntoViewIfNeeded();
-            await page.waitForTimeout(500);
-            
-            // Click the element
-            await element.click();
-            console.log(`Clicked on element: ${action.elementDescriptor}`);
-            
-            // Wait for any resulting navigation or state change
+            await page.waitForTimeout(300);
+            // Try clicking and wait for navigation or state change
             try {
-              await page.waitForLoadState('networkidle', { timeout: 5000 });
-            } catch (e) {
-              // It's okay if there's no navigation
-              console.log('No navigation detected after click (which might be fine)');
+              await Promise.all([
+                element.click(),
+                page.waitForLoadState('domcontentloaded', { timeout: 7000 }).catch(() => {})
+              ]);
+              console.log(`Clicked on element: ${action.elementDescriptor}`);
+              // Optionally, wait for networkidle if needed
+              try {
+                await page.waitForLoadState('networkidle', { timeout: 5000 });
+              } catch (e) {
+                console.log('No networkidle after click (might be fine)');
+              }
+            } catch (clickErr) {
+              console.error(`Error during click on '${action.elementDescriptor}':`, clickErr);
+              throw clickErr;
             }
           } else {
             console.error(`Element not found: ${action.elementDescriptor}`);
+            throw new Error(`Element not found: ${action.elementDescriptor}`);
           }
         } catch (clickError: any) {
           console.error(`Error clicking element: ${clickError.message || clickError}`);
@@ -881,6 +1095,42 @@ async function findInputField(page: Page, descriptor: string): Promise<any> {
 
 // Function to find any element (button, link, etc.) based on a descriptor
 async function findElement(page: Page, descriptor: string): Promise<any> {
+  console.log(`Finding element with descriptor: ${descriptor}`);
+  // Special handling for login buttons
+  if (descriptor.toLowerCase().includes('login') || descriptor.toLowerCase().includes('log in')) {
+    // Try common login button selectors first
+    const loginButtonSelectors = [
+      'button:has-text("login")',
+      'button:has-text("log in")',
+      'input[type="submit"][value="login"]',
+      'input[type="submit"][value="log in"]',
+      '.btn-primary:has-text("login")',
+      '.login-form button[type="submit"]',
+      'form button[type="submit"]',
+      'button[type="submit"]',
+      'button.login',
+      'button.btn-login',
+      // Case insensitive versions
+      'button:has-text(/login/i)',
+      'button:has-text(/log in/i)',
+      '.btn:has-text(/login/i)',
+      '.button:has-text(/login/i)'
+    ];
+    
+    for (const selector of loginButtonSelectors) {
+      try {
+        const button = await page.$(selector);
+        if (button && await button.isVisible()) {
+          console.log(`Found login button with selector: ${selector}`);
+          return button;
+        }
+      } catch (err) {
+        // Continue to next selector
+      }
+    }
+  }
+  
+  // Regular element finding logic continues...
   console.log(`Finding element for: ${descriptor}`);
   
   // Phase 1: Try direct matches with common element selectors

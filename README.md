@@ -13,6 +13,88 @@ AutoBrowser is a full-stack application that lets you control and automate a web
 
 ---
 
+## System Design & Workflow
+
+### 🟦 Low-Level System Design / Workflow
+
+1. **User Interaction (Frontend)**
+   - **React Frontend**
+     - User logs in and accesses a dashboard.
+     - User configures an automation task: selects a target website, specifies actions (e.g., login, fill form), or enters a natural language command.
+     - User submits the automation job via the UI.
+
+2. **API Request Handling (Backend)**
+   - **Express.js REST API**
+     - Receives the automation job as a POST request.
+     - Validates and parses the request.
+     - If the request contains a natural language command, forwards it to the LLM service.
+
+3. **LLM Integration**
+   - **Xenova Transformers (BERT/GPT-2, etc.)**
+     - Processes the user’s natural language command.
+     - Converts it into a structured automation action list (e.g., “Go to URL, fill username, click login”).
+     - Sends the structured actions back to the backend.
+
+4. **Automation Orchestration**
+   - **TypeScript Orchestrator**
+     - Receives the action list.
+     - Schedules and manages browser automation tasks.
+     - Handles concurrency, error retries, and logging.
+
+5. **Browser Automation Engine**
+   - **Playwright Automation Service**
+     - Launches a headless (or visible) browser instance.
+     - Performs the actions (navigate, fill, click, etc.) on the target website.
+     - Handles dynamic elements, waits, and fallback strategies.
+     - Captures screenshots and logs for debugging.
+
+6. **Result & Monitoring**
+   - **Backend**
+     - Collects results, screenshots, and logs.
+     - Updates the job status (success, failure, errors).
+     - Sends real-time updates or final results to the frontend via API/WebSocket.
+   - **Frontend**
+     - Displays job progress, logs, and results to the user.
+     - Allows users to download logs/screenshots or re-run failed jobs.
+
+#### 🗂️ Component Diagram (Textual)
+
+```
+[User] 
+   │
+   ▼
+[React Frontend] 
+   │ REST API (job config, status)
+   ▼
+[Express.js Backend] 
+   │
+   ├──> [Xenova Transformers LLM Service]  (for NL to actions)
+   │
+   └──> [Automation Orchestrator (TypeScript)]
+             │
+             ▼
+      [Playwright Automation Service]
+             │
+             ▼
+      [Target Website]
+             │
+             ▼
+      [Results/Logs/Screenshots]
+             │
+             ▼
+      [Frontend Dashboard]
+```
+
+#### 🛠️ Key Technologies
+- **Frontend:** React, JavaScript/TypeScript
+- **Backend:** Node.js, Express.js, TypeScript
+- **Automation:** Playwright
+- **LLM:** Xenova Transformers (BERT, GPT-2, etc.)
+- **Logging:** Winston
+- **Testing:** Jest
+
+---
+
 ## Directory Structure
 ```
 Browser-automation/
